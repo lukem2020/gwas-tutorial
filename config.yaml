@@ -1,7 +1,11 @@
 file_paths:
   vcf_file: "data/1000genomes/ALL.chr22.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf.gz"
   panel_file: "data/1000genomes/integrated_call_samples_v3.20130502.ALL.panel"
+  vcf_index_file: "data/1000genomes/ALL.chr22.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf.gz.idx"
 
 data_dir:
   1000genomes: "data/1000genomes"
   gwas_sumstats: "data/gwas_sumstats"
+
+urls:
+  base_url: "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/"
