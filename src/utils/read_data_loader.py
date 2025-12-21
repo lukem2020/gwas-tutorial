@@ -13,10 +13,11 @@ Repository: https://github.com/lukem2020/gwas-tutorial
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, Dict
 import logging
 import urllib.request
 import gzip
+import yaml
 
 try:
     import allel
@@ -57,9 +58,41 @@ KNOWN_DISEASE_SNPS = {
 class RealDataLoader:
     """Load and process real genomic data using pure Python packages"""
     
-    def __init__(self, data_dir: str = 'data'):
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, config_path: str = 'config.yaml', data_dir: Optional[str] = None):
+        """
+        Initialize data loader with config file
+        
+        Parameters:
+        -----------
+        config_path : str
+            Path to config.yaml file
+        data_dir : str, optional
+            Override data directory from config (for backwards compatibility)
+        """
+        # Load config file
+        config_path = Path(config_path)
+        if not config_path.exists():
+            raise FileNotFoundError(f"Config file not found: {config_path}")
+        
+        with open(config_path, 'r') as f:
+            self.config = yaml.safe_load(f)
+        
+        # Get paths from config
+        if data_dir is None:
+            self.data_dir = Path(self.config['data_dir']['1000genomes']).parent
+        else:
+            self.data_dir = Path(data_dir)
+        
+        # Store file paths from config
+        self.vcf_path = Path(self.config['file_paths']['vcf_file'])
+        self.panel_path = Path(self.config['file_paths']['panel_file'])
+        self.gwas_sumstats_dir = Path(self.config['data_dir']['gwas_sumstats'])
+        
+        # Create directories if they don't exist
+        self.vcf_path.parent.mkdir(parents=True, exist_ok=True)
+        self.panel_path.parent.mkdir(parents=True, exist_ok=True)
+        self.gwas_sumstats_dir.mkdir(parents=True, exist_ok=True)
+        
         self.logger = logging.getLogger(self.__class__.__name__)
         
         if not SCIKIT_ALLEL_AVAILABLE:
@@ -70,7 +103,7 @@ class RealDataLoader:
     
     def download_1000genomes(self, chromosome: int = 22, force: bool = False):
         """
-        Download 1000 Genomes Project data
+        Download 1000 Genomes Project data to paths specified in config.yaml
         
         Parameters:
         -----------
@@ -79,56 +112,54 @@ class RealDataLoader:
         force : bool
             Re-download even if file exists
         """
-        output_dir = self.data_dir / '1000genomes'
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
         base_url = "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/"
         
         chr_str = f"chr{chromosome}"
-        vcf_file = f"ALL.{chr_str}.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf.gz"
-        panel_file = "integrated_call_samples_v3.20130502.ALL.panel"
+        vcf_filename = f"ALL.{chr_str}.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf.gz"
+        panel_filename = "integrated_call_samples_v3.20130502.ALL.panel"
         
         print(f"\n{'='*80}")
         print(f"DOWNLOADING 1000 GENOMES PROJECT DATA - CHROMOSOME {chromosome}")
         print(f"{'='*80}\n")
         print("Note: Using scikit-allel (pure Python, works on Windows)")
         print("No external tools (tabix, bcftools) required!\n")
+        print(f"VCF will be saved to: {self.vcf_path}")
+        print(f"Panel will be saved to: {self.panel_path}\n")
         
-        # Download VCF
-        vcf_path = output_dir / vcf_file
-        if vcf_path.exists() and not force:
-            print(f"✓ {vcf_file} already exists")
+        # Download VCF to config-specified path
+        if self.vcf_path.exists() and not force:
+            print(f"✓ VCF file already exists at {self.vcf_path}")
         else:
-            print(f"Downloading {vcf_file}...")
+            print(f"Downloading {vcf_filename}...")
             print(f"Size: ~500MB-2GB (chromosome {chromosome})")
-            print(f"URL: {base_url}{vcf_file}")
+            print(f"URL: {base_url}{vcf_filename}")
             
             try:
                 urllib.request.urlretrieve(
-                    f"{base_url}{vcf_file}",
-                    vcf_path,
+                    f"{base_url}{vcf_filename}",
+                    self.vcf_path,
                     reporthook=self._download_progress
                 )
-                print(f"\n✓ Downloaded {vcf_file}")
+                print(f"\n✓ Downloaded VCF to {self.vcf_path}")
             except Exception as e:
                 raise RuntimeError(f"Download failed: {e}")
         
-        # Download panel
-        panel_path = output_dir / panel_file
-        if panel_path.exists() and not force:
-            print(f"✓ {panel_file} already exists")
+        # Download panel to config-specified path
+        if self.panel_path.exists() and not force:
+            print(f"✓ Panel file already exists at {self.panel_path}")
         else:
-            print(f"\nDownloading {panel_file}...")
+            print(f"\nDownloading {panel_filename}...")
             urllib.request.urlretrieve(
-                f"{base_url}{panel_file}",
-                panel_path
+                f"{base_url}{panel_filename}",
+                self.panel_path
             )
-            print(f"✓ Downloaded {panel_file}")
+            print(f"✓ Downloaded panel to {self.panel_path}")
         
         print(f"\n✓ 1000 Genomes chromosome {chromosome} data ready!")
-        print(f"Location: {output_dir}")
+        print(f"VCF location: {self.vcf_path}")
+        print(f"Panel location: {self.panel_path}")
         
-        return output_dir
+        return self.vcf_path.parent
     
     def _download_progress(self, block_num, block_size, total_size):
         """Progress callback for downloads"""
@@ -173,14 +204,19 @@ class RealDataLoader:
         """
         self.logger.info(f"Loading 1000 Genomes chr{chromosome}...")
         
-        kg_dir = self.data_dir / '1000genomes'
-        chr_str = f"chr{chromosome}"
-        vcf_file = kg_dir / f"ALL.{chr_str}.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf.gz"
-        panel_file = kg_dir / "integrated_call_samples_v3.20130502.ALL.panel"
+        # Use paths from config
+        vcf_file = self.vcf_path
+        panel_file = self.panel_path
         
         if not vcf_file.exists():
             raise FileNotFoundError(
-                f"1000 Genomes data not found.\n"
+                f"1000 Genomes VCF file not found at {vcf_file}.\n"
+                f"Run: loader.download_1000genomes(chromosome={chromosome})"
+            )
+        
+        if not panel_file.exists():
+            raise FileNotFoundError(
+                f"1000 Genomes panel file not found at {panel_file}.\n"
                 f"Run: loader.download_1000genomes(chromosome={chromosome})"
             )
         
@@ -291,7 +327,8 @@ class RealDataLoader:
         Parameters:
         -----------
         file_path : str
-            Path to summary statistics file
+            Path to summary statistics file (relative paths will be resolved 
+            against config's gwas_sumstats directory)
         sep : str
             Column separator
         compression : str
@@ -303,6 +340,15 @@ class RealDataLoader:
             Standardized columns: SNP, CHR, BP, A1, A2, BETA, SE, P
         """
         self.logger.info(f"Loading GWAS summary statistics: {file_path}")
+        
+        # Resolve file path - if relative, try in gwas_sumstats directory from config
+        file_path_obj = Path(file_path)
+        if not file_path_obj.is_absolute() and not file_path_obj.exists():
+            # Try in gwas_sumstats directory from config
+            alt_path = self.gwas_sumstats_dir / file_path
+            if alt_path.exists():
+                file_path = str(alt_path)
+                print(f"Found file in config directory: {file_path}")
         
         # Read file
         df = pd.read_csv(file_path, sep=sep, compression=compression, low_memory=False)
@@ -499,6 +545,8 @@ def quick_load_real_data(
 
 
 if __name__ == "__main__":
+    import sys
+    
     print("Real Data Loader - Pure Python Implementation")
     print("="*80)
     print("\nFeatures:")
@@ -506,6 +554,108 @@ if __name__ == "__main__":
     print("✓ Works on Windows, Mac, Linux")
     print("✓ No external tools required")
     print("✓ No compilation needed")
-    print("\nExample usage:")
-    print("  from src.utils.real_data_loader import quick_load_real_data")
-    print("  genotypes, phenotype, snp_info = quick_load_real_data()")
+    
+    # Initialize loader
+    try:
+        loader = RealDataLoader()
+        print(f"\n✓ Config loaded from config.yaml")
+        print(f"  VCF path: {loader.vcf_path}")
+        print(f"  Panel path: {loader.panel_path}")
+        print(f"  GWAS sumstats dir: {loader.gwas_sumstats_dir}")
+    except Exception as e:
+        print(f"\n✗ Error loading config: {e}")
+        sys.exit(1)
+    
+    # Check if data exists
+    vcf_exists = loader.vcf_path.exists()
+    panel_exists = loader.panel_path.exists()
+    
+    print(f"\n{'='*80}")
+    print("Data Status:")
+    print(f"  VCF file: {'✓ EXISTS' if vcf_exists else '✗ MISSING'} - {loader.vcf_path}")
+    print(f"  Panel file: {'✓ EXISTS' if panel_exists else '✗ MISSING'} - {loader.panel_path}")
+    
+    # Automatically download missing files
+    if not vcf_exists or not panel_exists:
+        print(f"\n{'='*80}")
+        print("DOWNLOADING MISSING FILES...")
+        print(f"{'='*80}")
+        try:
+            # Extract chromosome from VCF filename if possible, default to 22
+            chromosome = 22
+            vcf_name = loader.vcf_path.name
+            if 'chr' in vcf_name.lower():
+                # Try to extract chromosome number from filename
+                import re
+                match = re.search(r'chr(\d+)', vcf_name, re.IGNORECASE)
+                if match:
+                    chromosome = int(match.group(1))
+            
+            loader.download_1000genomes(chromosome=chromosome, force=False)
+            print("\n✓ Download complete!")
+            
+            # Verify files now exist
+            vcf_exists = loader.vcf_path.exists()
+            panel_exists = loader.panel_path.exists()
+        except Exception as e:
+            print(f"\n✗ Download failed: {e}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+    
+    if vcf_exists and panel_exists:
+        print(f"\n{'='*80}")
+        print("✓ All required data files are available!")
+        print("\nTo load data, use:")
+        print("  from src.utils.read_data_loader import RealDataLoader, quick_load_real_data")
+        print("  loader = RealDataLoader()")
+        print("  genotypes, snp_info, sample_info = loader.load_1000genomes(chromosome=22, max_snps=1000)")
+        print("\nOr use the quick function:")
+        print("  genotypes, phenotype, snp_info = quick_load_real_data(max_snps=1000)")
+    
+    # Handle command line arguments
+    if len(sys.argv) > 1:
+        if sys.argv[1] == 'download':
+            print(f"\n{'='*80}")
+            print("DOWNLOADING 1000 GENOMES DATA")
+            print(f"{'='*80}")
+            try:
+                loader.download_1000genomes(chromosome=22, force=False)
+                print("\n✓ Download complete!")
+            except Exception as e:
+                print(f"\n✗ Download failed: {e}")
+                sys.exit(1)
+        elif sys.argv[1] == 'demo':
+            print(f"\n{'='*80}")
+            print("RUNNING DEMO")
+            print(f"{'='*80}")
+            # Ensure files exist before demo
+            if not loader.vcf_path.exists() or not loader.panel_path.exists():
+                print("Downloading missing files first...")
+                chromosome = 22
+                vcf_name = loader.vcf_path.name
+                if 'chr' in vcf_name.lower():
+                    import re
+                    match = re.search(r'chr(\d+)', vcf_name, re.IGNORECASE)
+                    if match:
+                        chromosome = int(match.group(1))
+                loader.download_1000genomes(chromosome=chromosome, force=False)
+            try:
+                print("\nLoading small subset of data (1000 SNPs)...")
+                genotypes, phenotype, snp_info = quick_load_real_data(
+                    chromosome=22,
+                    max_snps=1000,
+                    populations=['EUR']
+                )
+                print(f"\n✓ Demo complete!")
+                print(f"  Genotypes shape: {genotypes.shape}")
+                print(f"  Phenotype shape: {phenotype.shape}")
+                print(f"  SNPs loaded: {len(snp_info)}")
+            except Exception as e:
+                print(f"\n✗ Demo failed: {e}")
+                import traceback
+                traceback.print_exc()
+                sys.exit(1)
+        else:
+            print(f"\nUnknown command: {sys.argv[1]}")
+            print("Available commands: download, demo")
