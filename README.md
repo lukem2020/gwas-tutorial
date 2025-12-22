@@ -19,12 +19,33 @@ A complete Python pipeline for GWAS, polygenic risk scoring (PRS), and eQTL anal
 
 ### Running the Pipeline
 
-#### Step 1: Configure Project
+#### Step 1: Download GEO Diabetes Dataset
+
+Download a GEO dataset for diabetes which contains both expression and phenotype data:
+
+```bash
+python step1_download_geo_diabetes.py
+```
+
+This will:
+- Prompt you for a GEO accession number (e.g., GSE12345)
+- Download the GEO Series Matrix file
+- Extract expression data
+- Extract phenotype data (diabetes status, clinical variables)
+- Save both to `data/expression/`
+
+**To find a diabetes GEO dataset:**
+1. Go to https://www.ncbi.nlm.nih.gov/geo/
+2. Search for "diabetes" or "type 2 diabetes"
+3. Find a dataset with both expression and phenotype data
+4. Copy the GEO accession (e.g., GSE12345)
+
+#### Step 2: Configure Project
 
 Set up your project configuration:
 
 ```bash
-python step1_configure.py
+python step2_configure.py
 ```
 
 This will:
@@ -40,12 +61,12 @@ The `config.yaml` file contains all settings for:
 - GWAS parameters
 - PRS and eQTL settings
 
-#### Step 2: Download Genotype Data
+#### Step 3: Download Genotype Data
 
 Download 1000 Genomes VCF files for specified chromosomes:
 
 ```bash
-python step2_download_genotypes.py
+python step3_download_genotypes.py
 ```
 
 This will:
@@ -56,6 +77,27 @@ This will:
 
 **Note**: Downloads can be large (100s of MB to several GB per chromosome). 
 The script downloads chromosomes specified in `config.yaml` (default: 2, 3, 4, 6, 8, 9, 10, 11).
+
+#### Step 4: Prepare Phenotype Data
+
+Uses the phenotype data downloaded from GEO in Step 1:
+
+```bash
+python step4_prepare_phenotypes.py
+```
+
+This will:
+- Load the phenotype file from Step 1 (GEO dataset)
+- Validate sample IDs
+- Prepare the phenotype data for GWAS analysis
+
+**Note**: The phenotype file from Step 1 should already be in `data/expression/` with the format `{GEO_ACCESSION}_phenotypes.csv`
+
+The phenotype file must have:
+- `sample_id`: 1000 Genomes sample IDs (e.g., HG00096, NA12878)
+- `phenotype`: Your trait values (case/control: 1/0, or continuous values)
+- `age`: Age in years (optional but recommended)
+- `sex`: 0=female, 1=male (optional but recommended)
 
 ## Project Structure
 
