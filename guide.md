@@ -1,31 +1,101 @@
-> **Step-by-step Python GWAS+PRS+eQTL Tutorial (1000 Genomes Real Data)**
+> **Step-by-step Python GWAS+PRS+eQTL Tutorial (1000 Genomes & GEO Data)**
 
-This guide covers a *full pipeline* for GWAS, polygenic risk scoring, and eQTL analysis using *real genotype data* from the 1000 Genomes Project. All steps can be run in pure Python (cross-platform, no external bioinformatics tools required).
+This guide covers a *full pipeline* for GWAS, polygenic risk scoring, and eQTL analysis using *real genotype data* from the **1000 Genomes Project** and *expression data* from **GEO (Gene Expression Omnibus)**. All steps can be run in pure Python (cross-platform, no external bioinformatics tools required).
 
 ---
 
 ## Pipeline Overview
 
+### Pre-Analysis: Data Preparation & Quality Control
+
 | Step | Task                      | Time       | Output               |
 |------|---------------------------|------------|----------------------|
 | 1    | Configure project         | < 1 sec    | config.yaml          |
-| 2    | Download genotype data    | 10-60 min  | VCF files (chr 2,3,4,6,8,9,10,11) |
-| 3    | Prepare phenotype data   | 1-5 min    | CSV file (optional)  |
-| 4    | Load genotypes            | 1-30 min   | Genotype matrix      |
-| 5    | Load phenotype            | < 1 sec    | Cases/controls       |
-| 6    | Run GWAS                  | 3-30 min   | P-values, Manhattan plot |
-| 7    | Calculate PRS             | 2-5 min    | AUC scores, quantiles |
-| 8    | Download expression data  | 5-15 min   | GEO expression matrix (optional) |
-| 9    | Run eQTL analysis         | 5-60 min   | SNP-gene associations (optional) |
-| 10   | Visualize results         | 5-10 sec   | Plots, summary stats |
-| 11   | Save results              | 1-2 sec    | CSV files, plots     |
-| 12   | Review & QC               | 10-30 min  | Quality checks       |
+| 2    | Download genotype data (1000 Genomes) | 10-60 min  | VCF files (chr 2,3,4,6,8,9,10,11) |
+| 3    | Prepare phenotype data   | 1-5 min    | CSV file             |
+| 4    | Download expression data (GEO) | 5-15 min   | GEO expression matrix (optional, for eQTL) |
+| 5    | Load genotypes            | 1-30 min   | Genotype matrix      |
+| 6    | Load phenotype            | < 1 sec    | Cases/controls       |
+| 7    | Quality Control (QC)      | 10-30 min  | Filtered samples/variants, QC metrics |
+| 8    | Calculate PCA             | 2-10 min   | Principal components, population structure plots |
+
+### Post-Analysis: Association Testing & Interpretation
+
+| Step | Task                      | Time       | Output               |
+|------|---------------------------|------------|----------------------|
+| 9    | Run GWAS                  | 3-30 min   | P-values, effect sizes, Manhattan plot |
+| 10   | Calculate PRS             | 2-5 min    | PRS scores, AUC, quantiles |
+| 11   | Run eQTL analysis         | 5-60 min   | SNP-gene associations (optional) |
+| 12   | Visualize results         | 5-10 sec   | Manhattan, QQ plots, regional plots |
+| 13   | Save results              | 1-2 sec    | CSV files, plots, summary stats |
+| 14   | Review & interpret        | 10-30 min  | Annotated results, validation |
 
 ---
 
 ## GWAS Best Practices
 
-### 1. Quality Control (QC) - Critical First Steps
+### 1. Data Acquisition
+
+> **Note**: This tutorial uses **1000 Genomes Project** for genotype data and **GEO** for expression data. These are complementary public datasets that enable GWAS and eQTL analysis workflows.
+
+#### Genotype Data Sources
+- **Primary source**: **1000 Genomes Project** (https://www.internationalgenome.org/)
+  - Phase 3 release: ~2,500 individuals from 26 populations
+  - VCF format available for download
+  - Includes population labels and sample metadata
+- **Format considerations**: VCF format (can be converted to PLINK bed/bim/fam, HDF5, or Zarr if needed)
+- **Data versioning**: Document which 1000 Genomes phase/version you're using (e.g., Phase 3, GRCh37/hg19)
+- **Download verification**: Check file integrity (MD5/SHA checksums provided by 1000 Genomes)
+- **Storage**: Plan for large file sizes (genome-wide VCF files can be 100s of GB per chromosome)
+- **Access**: Publicly available, no restrictions for research use
+
+#### Phenotype Data
+- **Clinical data**: Ensure proper consent and IRB approval
+- **Data formats**: CSV, TSV, or database formats
+- **Data dictionary**: Document all variables, coding schemes, and units
+- **Missing data**: Document missing data patterns and reasons
+- **Trait definition**: Clearly define case/control criteria or continuous trait measurements
+
+#### Expression Data (for eQTL Analysis)
+- **Primary source**: **GEO (Gene Expression Omnibus)** (https://www.ncbi.nlm.nih.gov/geo/)
+  - Largest repository of gene expression data
+  - Contains microarray and RNA-seq datasets
+  - Searchable by organism, tissue, disease, platform
+  - Access via GEO accession numbers (e.g., GSE12345)
+  - Download processed data matrices or raw files
+- **GEO data formats**: 
+  - **Series Matrix files**: Pre-processed expression matrices (recommended for quick start)
+  - **Raw data**: CEL files (Affymetrix), IDAT files (Illumina), FASTQ (RNA-seq)
+  - **Processed data**: Gene expression matrices (TPM, FPKM, RPKM, counts, normalized intensities)
+  - **Standard formats**: GCT, SOFT format files
+- **Data processing considerations**:
+  - **Normalization**: RPKM, FPKM, TPM for RNA-seq; RMA, quantile normalization for microarrays
+  - **Batch effects**: Document and account for batch/plate effects
+  - **Quality metrics**: RIN scores (RNA-seq), detection p-values (microarrays)
+  - **Gene annotation**: Use consistent gene ID systems (Ensembl, RefSeq, Gene Symbol)
+- **Sample matching for eQTL analysis**: 
+  - **Direct matching**: Ideally use GEO datasets where expression samples correspond to 1000 Genomes individuals (check GEO sample metadata for sample IDs)
+  - **Population-matched analysis**: If direct matching isn't available, use population-matched expression data (e.g., European samples from GEO with European samples from 1000 Genomes)
+  - **Cross-reference workflow**: Match by population labels and perform population-stratified eQTL analysis
+  - **Documentation**: Always document sample overlap, matching strategy, and any assumptions made
+- **Tissue/cell type**: Document tissue type, cell line, or experimental condition
+- **Metadata**: Document experimental design, protocols, and processing pipelines
+- **Storage**: Expression matrices can be large (especially RNA-seq with many samples/genes)
+
+#### Reference Data
+- **Reference panels**: **1000 Genomes** (primary reference for this tutorial), HRC, TOPMed for imputation
+- **Annotation databases**: dbSNP, Ensembl, RefSeq for variant annotation
+- **LD reference**: Use 1000 Genomes LD structure for population-specific analysis
+- **Functional annotation**: ENCODE, Roadmap Epigenomics for functional elements
+- **GEO metadata**: Use GEO sample and platform annotations for expression data interpretation
+
+#### Data Organization
+- **File naming**: Use consistent, descriptive naming conventions
+- **Directory structure**: Organize by data type (genotypes, phenotypes, results)
+- **Metadata**: Create README files documenting data sources and processing
+- **Backup**: Ensure proper backup and version control for data files
+
+### 2. Quality Control (QC) - Critical First Steps
 
 #### Sample-Level QC
 - **Missingness**: Remove samples with >5-10% missing genotype data
@@ -41,7 +111,7 @@ This guide covers a *full pipeline* for GWAS, polygenic risk scoring, and eQTL a
 - **Call rate**: Ensure high-quality genotyping (call rate > 95-99%)
 - **Duplicate variants**: Remove duplicate or ambiguous variants
 
-### 2. Statistical Considerations
+### 3. Statistical Considerations
 
 #### Association Testing
 - **Model selection**: Use appropriate regression model (logistic for binary traits, linear for continuous)
@@ -57,20 +127,20 @@ This guide covers a *full pipeline* for GWAS, polygenic risk scoring, and eQTL a
 - **Permutation testing**: Gold standard for empirical p-values
 - **Regional significance**: Consider significance within LD blocks
 
-### 3. Data Preprocessing
+### 4. Data Preprocessing
 
 #### Genotype Data
-- **Imputation**: Impute missing genotypes using reference panels (1000 Genomes, HRC, TOPMed)
-- **Phasing**: Phase haplotypes for better imputation accuracy
-- **Linkage Disequilibrium (LD)**: Calculate LD structure for regional analysis
-- **Allele coding**: Ensure consistent allele coding (reference vs. alternate)
+- **Imputation**: Impute missing genotypes using **1000 Genomes** as reference panel (HRC, TOPMed are alternatives)
+- **Phasing**: Phase haplotypes for better imputation accuracy (1000 Genomes provides phased data)
+- **Linkage Disequilibrium (LD)**: Calculate LD structure from 1000 Genomes data for regional analysis
+- **Allele coding**: Ensure consistent allele coding (reference vs. alternate) - 1000 Genomes uses GRCh37/hg19 reference
 
 #### Phenotype Data
 - **Trait transformation**: Consider log/normalization for skewed continuous traits
 - **Outlier removal**: Remove extreme outliers that may be errors
 - **Covariate adjustment**: Pre-adjust phenotypes for known confounders if needed
 
-### 4. Population Stratification Control
+### 5. Population Stratification Control
 
 #### Principal Component Analysis (PCA)
 - Calculate PCs on LD-pruned variants (r² < 0.2)
@@ -83,7 +153,7 @@ This guide covers a *full pipeline* for GWAS, polygenic risk scoring, and eQTL a
 - **Mixed models**: Use linear mixed models (LMM) to account for relatedness
 - **Stratified analysis**: Analyze populations separately if highly heterogeneous
 
-### 5. Reproducibility & Documentation
+### 6. Reproducibility & Documentation
 
 #### Code & Data Management
 - **Version control**: Use Git for code versioning
@@ -99,7 +169,7 @@ This guide covers a *full pipeline* for GWAS, polygenic risk scoring, and eQTL a
 - **Manhattan plots**: Include genome-wide association plots
 - **QQ plots**: Include quantile-quantile plots to assess inflation
 
-### 6. Visualization Best Practices
+### 7. Visualization Best Practices
 
 #### Essential Plots
 - **Manhattan plot**: Show -log10(p-values) across chromosomes
@@ -114,7 +184,7 @@ This guide covers a *full pipeline* for GWAS, polygenic risk scoring, and eQTL a
 - Color-code by chromosome for Manhattan plots
 - Include sample sizes and QC metrics in plot titles/captions
 
-### 7. Interpretation Guidelines
+### 8. Interpretation Guidelines
 
 #### Significance Assessment
 - **Genome-wide significant**: p < 5×10⁻⁸ (gold standard)
@@ -128,7 +198,7 @@ This guide covers a *full pipeline* for GWAS, polygenic risk scoring, and eQTL a
 - **Pathway analysis**: Test for enrichment in biological pathways
 - **Literature review**: Compare with previous GWAS findings
 
-### 8. Common Pitfalls to Avoid
+### 9. Common Pitfalls to Avoid
 
 #### Data Issues
 - ❌ Not checking for batch effects or plate effects
@@ -150,7 +220,7 @@ This guide covers a *full pipeline* for GWAS, polygenic risk scoring, and eQTL a
 - ❌ Over-interpreting marginal associations
 - ❌ Not considering LD structure in interpretation
 
-### 9. Post-GWAS Analysis
+### 10. Post-GWAS Analysis
 
 #### Fine-Mapping
 - Identify causal variants within significant regions
@@ -169,7 +239,7 @@ This guide covers a *full pipeline* for GWAS, polygenic risk scoring, and eQTL a
 - Validate PRS in independent cohorts
 - Report predictive performance (AUC, R²)
 
-### 10. Ethical Considerations
+### 11. Ethical Considerations
 
 - **Data privacy**: Ensure proper consent and data protection
 - **Population representation**: Acknowledge limitations in diverse populations
@@ -180,6 +250,10 @@ This guide covers a *full pipeline* for GWAS, polygenic risk scoring, and eQTL a
 
 ## Recommended Workflow Checklist
 
+- [ ] Acquire and verify 1000 Genomes genotype data (check integrity, document phase/version)
+- [ ] Acquire and prepare phenotype data (document variables, handle missing data)
+- [ ] Acquire expression data from GEO (if doing eQTL analysis: search GEO, download Series Matrix or processed data)
+- [ ] Organize data with clear directory structure and metadata
 - [ ] Perform sample-level QC (missingness, relatedness, sex check)
 - [ ] Perform variant-level QC (MAF, HWE, missingness)
 - [ ] Calculate and visualize PCA
