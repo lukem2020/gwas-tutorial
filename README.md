@@ -156,6 +156,18 @@ See `guide.md` for detailed best practices and guidelines.
 - **Genotype Data**: [1000 Genomes Project](https://www.internationalgenome.org/)
 - **Expression Data**: [GEO (Gene Expression Omnibus)](https://www.ncbi.nlm.nih.gov/geo/)
 
+## Skills Documentation
+
+For employers and collaborators, see:
+- **`SKILLS_SUMMARY.md`** - Quick reference of core competencies
+- **`SKILLS_DOCUMENTATION.md`** - Detailed technical documentation of skills and achievements
+
+These documents demonstrate expertise in:
+- Statistical models for genomic/biological research
+- Innovation in statistical methodology
+- Advanced Python coding skills
+- Deep expertise in GWAS, PRS, eQTL, pathway analysis, Mendelian randomization
+
 ## License
 
 This tutorial is for educational purposes.
