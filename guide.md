@@ -1,3 +1,4 @@
+#v 1.0
 # GWAS + PRS + eQTL Pipeline Guide
 ## Using 1000 Genomes & GEO Data
 
