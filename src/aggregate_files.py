@@ -15,8 +15,16 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 import yaml
 import warnings
+import logging
 
 warnings.filterwarnings("ignore")
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 def parse_soft_platform_table(soft_file: str) -> pd.DataFrame:
@@ -37,9 +45,8 @@ def parse_soft_platform_table(soft_file: str) -> pd.DataFrame:
 
     # Check if file exists
     if not soft_file.exists():
-        raise FileNotFoundError(f"SOFT file not found: {soft_file}")
-
-    print(f"    Parsing platform table from: {soft_file.name}")
+        logger.error("SOFT file not found: %s", soft_file)
+        raise FileNotFoundError("SOFT file not found: %s" % soft_file)
 
     # Read file (handle both compressed and uncompressed)
     try:
@@ -50,7 +57,8 @@ def parse_soft_platform_table(soft_file: str) -> pd.DataFrame:
             with open(soft_file, "rt", encoding="utf-8", errors="ignore") as f:
                 lines = f.readlines()
     except Exception as e:
-        raise IOError(f"Error reading SOFT file: {e}")
+        logger.error("Error reading SOFT file %s: %s", soft_file, e)
+        raise IOError("Error reading SOFT file: %s" % e)
 
     # Find platform table section
     table_start = None
@@ -70,6 +78,7 @@ def parse_soft_platform_table(soft_file: str) -> pd.DataFrame:
                 break
 
     if table_start is None:
+        logger.error("Could not find platform table in SOFT file: %s", soft_file)
         raise ValueError("Could not find platform table in SOFT file")
 
     if header_line is None:
@@ -80,6 +89,7 @@ def parse_soft_platform_table(soft_file: str) -> pd.DataFrame:
                 break
 
     if header_line is None:
+        logger.error("Could not find platform table header in SOFT file: %s", soft_file)
         raise ValueError("Could not find platform table header")
 
     # Parse header
@@ -107,6 +117,7 @@ def parse_soft_platform_table(soft_file: str) -> pd.DataFrame:
             data_rows.append(row)
 
     if not data_rows:
+        logger.error("No data rows found in platform table: %s", soft_file)
         raise ValueError("No data rows found in platform table")
 
     # Create DataFrame
@@ -114,8 +125,6 @@ def parse_soft_platform_table(soft_file: str) -> pd.DataFrame:
 
     # Clean up: remove empty rows
     platform_df = platform_df[platform_df.iloc[:, 0].astype(str).str.strip() != ""]
-
-    print(f"      Found {len(platform_df)} probes in platform table")
 
     return platform_df
 
@@ -167,8 +176,9 @@ def extract_probe_to_gene_mapping(platform_df: pd.DataFrame) -> pd.DataFrame:
         probe_col = platform_df.columns[0]
 
     if gene_symbol_col is None:
+        logger.error("Could not find GENE_SYMBOL or gene_assignment column in platform table. Available columns: %s", list(platform_df.columns))
         raise ValueError(
-            f"Could not find GENE_SYMBOL or gene_assignment column in platform table. Available columns: {list(platform_df.columns)}"
+            "Could not find GENE_SYMBOL or gene_assignment column in platform table. Available columns: %s" % list(platform_df.columns)
         )
 
     # Create mapping DataFrame
@@ -233,9 +243,6 @@ def extract_probe_to_gene_mapping(platform_df: pd.DataFrame) -> pd.DataFrame:
     # Remove duplicates (keep first)
     mapping_df = mapping_df.drop_duplicates(subset=["probe_id"], keep="first")
 
-    print(f"      Mapped {len(mapping_df)} probes to genes")
-    print(f"      Unique genes: {mapping_df['gene_symbol'].nunique()}")
-
     return mapping_df
 
 
@@ -261,8 +268,6 @@ def aggregate_probes_to_genes(
     pd.DataFrame
         Gene-level expression matrix with gene symbols as index
     """
-    print(f"    Aggregating {len(expression_df)} probes to genes...")
-
     # Reset index if needed
     if expression_df.index.name != "probe_id":
         expression_df = expression_df.reset_index()
@@ -309,19 +314,11 @@ def aggregate_probes_to_genes(
     elif aggregation_method == "max":
         gene_expression = expression_with_genes.groupby("gene_symbol").max()
     else:
-        raise ValueError(f"Unknown aggregation method: {aggregation_method}")
+        logger.error("Unknown aggregation method: %s", aggregation_method)
+        raise ValueError("Unknown aggregation method: %s" % aggregation_method)
 
     # Sort by gene symbol
     gene_expression = gene_expression.sort_index()
-
-    print(f"      Aggregated to {len(gene_expression)} genes")
-
-    # Report probes per gene statistics
-    probes_per_gene = expression_with_genes.groupby("gene_symbol").size()
-    print(
-        f"      Probes per gene: min={probes_per_gene.min()}, "
-        f"max={probes_per_gene.max()}, mean={probes_per_gene.mean():.2f}"
-    )
 
     return gene_expression
 
@@ -348,11 +345,10 @@ def merge_expression_with_phenotypes(
     pd.DataFrame
         Combined DataFrame with expression and phenotypes
     """
-    print(f"    Merging expression with phenotypes...")
-
     # Ensure sample_id column exists
     if sample_id_col not in phenotypes_df.columns:
-        raise ValueError(f"Column '{sample_id_col}' not found in phenotypes DataFrame")
+        logger.error("Column '%s' not found in phenotypes DataFrame", sample_id_col)
+        raise ValueError("Column '%s' not found in phenotypes DataFrame" % sample_id_col)
 
     # Get sample IDs from expression (columns) and phenotypes
     expr_samples = set(gene_expression.columns)
@@ -362,13 +358,10 @@ def merge_expression_with_phenotypes(
     common_samples = expr_samples.intersection(pheno_samples)
 
     if len(common_samples) == 0:
+        logger.error("No matching samples found between expression and phenotype data")
         raise ValueError(
             "No matching samples found between expression and phenotype data"
         )
-
-    print(f"      Expression samples: {len(expr_samples)}")
-    print(f"      Phenotype samples: {len(pheno_samples)}")
-    print(f"      Common samples: {len(common_samples)}")
 
     # Filter to common samples
     gene_expression_filtered = gene_expression[list(common_samples)]
@@ -383,10 +376,6 @@ def merge_expression_with_phenotypes(
 
     # Merge
     combined_df = expression_t.merge(phenotypes_filtered, on=sample_id_col, how="inner")
-
-    print(
-        f"      Merged dataset: {len(combined_df)} samples × {len(gene_expression_filtered)} genes + phenotypes"
-    )
 
     return combined_df
 
@@ -419,13 +408,10 @@ def process_geo_dataset(
     """
     data_dir = Path(data_dir)
 
-    print(f"\nProcessing {geo_accession}...")
-    print("=" * 60)
-
     # File paths
-    soft_file = data_dir / f"{geo_accession}_family.soft.gz"
-    expression_file = data_dir / f"{geo_accession}_expression.csv"
-    phenotype_file = data_dir / f"{geo_accession}_phenotypes.csv"
+    soft_file = data_dir / "%s_family.soft.gz" % geo_accession
+    expression_file = data_dir / "%s_expression.csv" % geo_accession
+    phenotype_file = data_dir / "%s_phenotypes.csv" % geo_accession
 
     # Check files exist
     missing_files = []
@@ -437,8 +423,9 @@ def process_geo_dataset(
         missing_files.append(phenotype_file.name)
 
     if missing_files:
+        logger.error("Missing files for %s: %s", geo_accession, ', '.join(missing_files))
         raise FileNotFoundError(
-            f"Missing files for {geo_accession}: {', '.join(missing_files)}"
+            "Missing files for %s: %s" % (geo_accession, ', '.join(missing_files))
         )
 
     # Step 1: Parse platform table from SOFT file
@@ -448,11 +435,11 @@ def process_geo_dataset(
     probe_to_gene = extract_probe_to_gene_mapping(platform_df)
 
     # Step 3: Load expression data
-    print(f"    Loading expression data: {expression_file.name}")
-    expression_df = pd.read_csv(expression_file, index_col=0)
-    print(
-        f"      Expression matrix: {expression_df.shape[0]} probes × {expression_df.shape[1]} samples"
-    )
+    try:
+        expression_df = pd.read_csv(expression_file, index_col=0)
+    except Exception as e:
+        logger.error("Error loading expression data from %s: %s", expression_file, e)
+        raise
 
     # Step 4: Aggregate probes to genes
     gene_expression = aggregate_probes_to_genes(
@@ -460,9 +447,11 @@ def process_geo_dataset(
     )
 
     # Step 5: Load phenotype data
-    print(f"    Loading phenotype data: {phenotype_file.name}")
-    phenotypes_df = pd.read_csv(phenotype_file)
-    print(f"      Phenotypes: {len(phenotypes_df)} samples")
+    try:
+        phenotypes_df = pd.read_csv(phenotype_file)
+    except Exception as e:
+        logger.error("Error loading phenotype data from %s: %s", phenotype_file, e)
+        raise
 
     # Step 6: Merge expression with phenotypes
     combined_df = merge_expression_with_phenotypes(gene_expression, phenotypes_df)
@@ -477,10 +466,6 @@ def process_geo_dataset(
             len(expression_df) / len(gene_expression) if len(gene_expression) > 0 else 0
         ),
     }
-
-    print(f"\n  OK Processing complete!")
-    print(f"    - {stats['n_probes']} probes -> {stats['n_genes']} genes")
-    print(f"    - {stats['n_samples']} samples with expression + phenotypes")
 
     return {
         "probe_to_gene": probe_to_gene,
@@ -516,22 +501,31 @@ def save_processed_data(
     saved_files = {}
 
     # Save probe-to-gene mapping
-    probe_to_gene_file = output_dir / f"{geo_accession}_probe_to_gene.csv"
-    results["probe_to_gene"].to_csv(probe_to_gene_file, index=False)
-    saved_files["probe_to_gene"] = probe_to_gene_file
-    print(f"    OK Saved: {probe_to_gene_file.name}")
+    try:
+        probe_to_gene_file = output_dir / "%s_probe_to_gene.csv" % geo_accession
+        results["probe_to_gene"].to_csv(probe_to_gene_file, index=False)
+        saved_files["probe_to_gene"] = probe_to_gene_file
+    except Exception as e:
+        logger.error("Error saving probe-to-gene mapping for %s: %s", geo_accession, e)
+        raise
 
     # Save gene-level expression matrix
-    gene_expr_file = output_dir / f"{geo_accession}_gene_expression.csv"
-    results["gene_expression"].to_csv(gene_expr_file)
-    saved_files["gene_expression"] = gene_expr_file
-    print(f"    OK Saved: {gene_expr_file.name}")
+    try:
+        gene_expr_file = output_dir / "%s_gene_expression.csv" % geo_accession
+        results["gene_expression"].to_csv(gene_expr_file)
+        saved_files["gene_expression"] = gene_expr_file
+    except Exception as e:
+        logger.error("Error saving gene expression for %s: %s", geo_accession, e)
+        raise
 
     # Save combined expression + phenotypes
-    combined_file = output_dir / f"{geo_accession}_gene_expression_with_phenotypes.csv"
-    results["combined"].to_csv(combined_file, index=False)
-    saved_files["combined"] = combined_file
-    print(f"    OK Saved: {combined_file.name}")
+    try:
+        combined_file = output_dir / "%s_gene_expression_with_phenotypes.csv" % geo_accession
+        results["combined"].to_csv(combined_file, index=False)
+        saved_files["combined"] = combined_file
+    except Exception as e:
+        logger.error("Error saving combined data for %s: %s", geo_accession, e)
+        raise
 
     return saved_files
 
@@ -570,16 +564,16 @@ def process_all_datasets(
     print("=" * 60)
     print("Process GEO Expression Data: Probe-to-Gene Mapping")
     print("=" * 60)
-    print(f"\nFound {len(geo_datasets)} datasets to process:")
+    print("\nFound %d datasets to process:" % len(geo_datasets))
     for gse in geo_datasets:
-        print(f"  - {gse}")
+        print("  - %s" % gse)
     print()
 
     results = {}
 
     for i, geo_accession in enumerate(geo_datasets, 1):
         try:
-            print(f"\n[{i}/{len(geo_datasets)}] Processing {geo_accession}...")
+            print("\n[%d/%d] Processing %s..." % (i, len(geo_datasets), geo_accession))
             result = process_geo_dataset(geo_accession, data_dir, aggregation_method)
 
             # Save files
@@ -589,10 +583,7 @@ def process_all_datasets(
             results[geo_accession] = result
 
         except Exception as e:
-            print(f"  X Error processing {geo_accession}: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.error("Error processing %s: %s", geo_accession, e)
             results[geo_accession] = {"error": str(e)}
 
     return results
@@ -611,15 +602,15 @@ def main():
         successful = [gse for gse, data in results.items() if "error" not in data]
         failed = [gse for gse, data in results.items() if "error" in data]
 
-        print(f"\nSuccessfully processed: {len(successful)}/{len(results)}")
+        print("\nSuccessfully processed: %d/%d" % (len(successful), len(results)))
         for gse in successful:
             stats = results[gse]["stats"]
-            print(f"  OK {gse}: {stats['n_genes']} genes, {stats['n_samples']} samples")
+            print("  OK %s: %d genes, %d samples" % (gse, stats['n_genes'], stats['n_samples']))
 
         if failed:
-            print(f"\nFailed: {len(failed)}")
+            print("\nFailed: %d" % len(failed))
             for gse in failed:
-                print(f"  X {gse}: {results[gse].get('error', 'Unknown error')}")
+                print("  X %s: %s" % (gse, results[gse].get('error', 'Unknown error')))
 
         print("\n" + "=" * 60)
         print("Output Files")
@@ -633,10 +624,7 @@ def main():
         return 0 if not failed else 1
 
     except Exception as e:
-        print(f"\nX Error: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("Error in main: %s", e)
         return 1
 
 

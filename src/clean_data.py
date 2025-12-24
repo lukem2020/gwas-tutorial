@@ -15,8 +15,16 @@ from pathlib import Path
 from typing import Dict, Optional
 import yaml
 import warnings
+import logging
 
 warnings.filterwarnings("ignore")
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 def parse_characteristics(characteristics_str):
@@ -65,8 +73,6 @@ def extract_phenotype_variables(combined_df: pd.DataFrame) -> pd.DataFrame:
     pd.DataFrame
         DataFrame with extracted phenotype columns added
     """
-    print("    Extracting all phenotype variables from Characteristics Ch1...")
-
     # Collect all unique keys across all samples
     all_phenotype_keys = set()
     for idx, row in combined_df.iterrows():
@@ -74,10 +80,8 @@ def extract_phenotype_variables(combined_df: pd.DataFrame) -> pd.DataFrame:
         all_phenotype_keys.update(char_dict.keys())
 
     if not all_phenotype_keys:
-        print("      No phenotype variables found in Characteristics Ch1")
-        return combined_df
-
-    print(f"      Found {len(all_phenotype_keys)} unique phenotype variables")
+        logger.warning("No phenotype variables found in Characteristics Ch1")
+        return combined_df, set()
 
     # Extract each phenotype variable into separate columns
     phenotype_data = {}
@@ -113,8 +117,6 @@ def create_binary_disease_status(combined_df: pd.DataFrame) -> pd.DataFrame:
     pd.DataFrame
         DataFrame with binary disease_status column
     """
-    print("    Creating binary disease_status column (0 or 1)...")
-
     disease_status_binary = []
 
     for idx, row in combined_df.iterrows():
@@ -193,27 +195,23 @@ def clean_geo_dataset(geo_accession: str, data_dir: str = "data/expression") -> 
     """
     data_dir = Path(data_dir)
 
-    print(f"\nCleaning {geo_accession}...")
-    print("=" * 60)
-
     # File path
-    combined_file = data_dir / f"{geo_accession}_gene_expression_with_phenotypes.csv"
+    combined_file = data_dir / "%s_gene_expression_with_phenotypes.csv" % geo_accession
 
     if not combined_file.exists():
-        raise FileNotFoundError(f"File not found: {combined_file}")
+        logger.error("File not found: %s", combined_file)
+        raise FileNotFoundError("File not found: %s" % combined_file)
 
     # Load combined dataset
-    print(f"    Loading: {combined_file.name}")
-    combined_df = pd.read_csv(combined_file)
-    print(
-        f"      Loaded: {combined_df.shape[0]} samples × {combined_df.shape[1]} columns"
-    )
+    try:
+        combined_df = pd.read_csv(combined_file)
+    except Exception as e:
+        logger.error("Error loading combined dataset from %s: %s", combined_file, e)
+        raise
 
     # Check if Characteristics Ch1 exists
     if "Characteristics Ch1" not in combined_df.columns:
-        print(
-            "    WARNING: 'Characteristics Ch1' column not found. Dataset may already be cleaned."
-        )
+        logger.warning("'Characteristics Ch1' column not found for %s. Dataset may already be cleaned.", geo_accession)
         return {
             "cleaned": combined_df,
             "stats": {
@@ -232,7 +230,6 @@ def clean_geo_dataset(geo_accession: str, data_dir: str = "data/expression") -> 
     # Remove Characteristics Ch1 column
     if "Characteristics Ch1" in combined_df.columns:
         combined_df = combined_df.drop(columns=["Characteristics Ch1"])
-        print("    Removed 'Characteristics Ch1' column")
 
     # Calculate statistics
     phenotype_cols = [
@@ -261,13 +258,6 @@ def clean_geo_dataset(geo_accession: str, data_dir: str = "data/expression") -> 
             else 0
         ),
     }
-
-    print(f"\n  OK Cleaning complete!")
-    print(f"    - {stats['n_samples']} samples")
-    print(f"    - {stats['phenotype_vars_extracted']} phenotype variables extracted")
-    print(
-        f"    - Disease (1): {stats['disease_status_1']}, Control (0): {stats['disease_status_0']}"
-    )
 
     return {
         "cleaned": combined_df,
@@ -300,9 +290,12 @@ def save_cleaned_data(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Save cleaned dataset
-    output_file = output_dir / f"{geo_accession}_cleaned.csv"
-    results["cleaned"].to_csv(output_file, index=False)
-    print(f"    OK Saved: {output_file.name}")
+    try:
+        output_file = output_dir / "%s_cleaned.csv" % geo_accession
+        results["cleaned"].to_csv(output_file, index=False)
+    except Exception as e:
+        logger.error("Error saving cleaned data for %s: %s", geo_accession, e)
+        raise
 
     return output_file
 
@@ -337,16 +330,16 @@ def clean_all_datasets(
     print("=" * 60)
     print("Clean GEO Expression Data: Extract Phenotypes")
     print("=" * 60)
-    print(f"\nFound {len(geo_datasets)} datasets to clean:")
+    print("\nFound %d datasets to clean:" % len(geo_datasets))
     for gse in geo_datasets:
-        print(f"  - {gse}")
+        print("  - %s" % gse)
     print()
 
     results = {}
 
     for i, geo_accession in enumerate(geo_datasets, 1):
         try:
-            print(f"\n[{i}/{len(geo_datasets)}] Processing {geo_accession}...")
+            print("\n[%d/%d] Processing %s..." % (i, len(geo_datasets), geo_accession))
             result = clean_geo_dataset(geo_accession, data_dir)
 
             # Save cleaned file
@@ -356,10 +349,7 @@ def clean_all_datasets(
             results[geo_accession] = result
 
         except Exception as e:
-            print(f"  X Error processing {geo_accession}: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.error("Error processing %s: %s", geo_accession, e)
             results[geo_accession] = {"error": str(e)}
 
     return results
@@ -378,20 +368,16 @@ def main():
         successful = [gse for gse, data in results.items() if "error" not in data]
         failed = [gse for gse, data in results.items() if "error" in data]
 
-        print(f"\nSuccessfully cleaned: {len(successful)}/{len(results)}")
+        print("\nSuccessfully cleaned: %d/%d" % (len(successful), len(results)))
         for gse in successful:
             stats = results[gse]["stats"]
-            print(
-                f"  OK {gse}: {stats['n_samples']} samples, {stats['phenotype_vars_extracted']} phenotype variables"
-            )
-            print(
-                f"      Disease (1): {stats['disease_status_1']}, Control (0): {stats['disease_status_0']}"
-            )
+            print("  OK %s: %d samples, %d phenotype variables" % (gse, stats['n_samples'], stats['phenotype_vars_extracted']))
+            print("      Disease (1): %d, Control (0): %d" % (stats['disease_status_1'], stats['disease_status_0']))
 
         if failed:
-            print(f"\nFailed: {len(failed)}")
+            print("\nFailed: %d" % len(failed))
             for gse in failed:
-                print(f"  X {gse}: {results[gse].get('error', 'Unknown error')}")
+                print("  X %s: %s" % (gse, results[gse].get('error', 'Unknown error')))
 
         print("\n" + "=" * 60)
         print("Output Files")
@@ -405,10 +391,7 @@ def main():
         return 0 if not failed else 1
 
     except Exception as e:
-        print(f"\nX Error: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("Error in main: %s", e)
         return 1
 
 

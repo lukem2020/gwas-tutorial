@@ -10,6 +10,14 @@ from pathlib import Path
 from typing import List, Dict, Optional
 import yaml
 import time
+import logging
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 def download_geo_file(
@@ -37,62 +45,55 @@ def download_geo_file(
 
     # Construct file names and URLs
     first_two = geo_accession[3:5]  # e.g., "93" from "GSE93606"
-    base_url = (
-        f"https://ftp.ncbi.nlm.nih.gov/geo/series/GSE{first_two}nnn/{geo_accession}"
-    )
+    base_url = "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE%snnn/%s" % (first_two, geo_accession)
 
     if file_type == "matrix":
-        filename = f"{geo_accession}_series_matrix.txt.gz"
-        url = f"{base_url}/matrix/{filename}"
+        filename = "%s_series_matrix.txt.gz" % geo_accession
+        url = "%s/matrix/%s" % (base_url, filename)
         output_path = output_dir / filename
     elif file_type == "soft":
-        filename = f"{geo_accession}_family.soft.gz"
-        url = f"{base_url}/soft/{filename}"
+        filename = "%s_family.soft.gz" % geo_accession
+        url = "%s/soft/%s" % (base_url, filename)
         output_path = output_dir / filename
     elif file_type == "miniml":
-        filename = f"{geo_accession}_family.xml.tgz"
-        url = f"{base_url}/miniml/{filename}"
+        filename = "%s_family.xml.tgz" % geo_accession
+        url = "%s/miniml/%s" % (base_url, filename)
         output_path = output_dir / filename
     else:
+        logger.error("Unknown file_type: %s. Must be 'matrix', 'soft', or 'miniml'", file_type)
         raise ValueError(
-            f"Unknown file_type: {file_type}. Must be 'matrix', 'soft', or 'miniml'"
+            "Unknown file_type: %s. Must be 'matrix', 'soft', or 'miniml'" % file_type
         )
 
     # Skip if already downloaded
     if output_path.exists():
         file_size = output_path.stat().st_size
         if file_size > 0:
-            print(f"    OK Already downloaded: {filename} ({file_size / 1024:.1f} KB)")
             return str(output_path)
-
-    print(f"    Downloading {file_type.upper()}: {filename}")
 
     try:
         urllib.request.urlretrieve(url, output_path)
         file_size = output_path.stat().st_size
-        print(f"      OK Downloaded: {file_size / 1024:.1f} KB")
         return str(output_path)
     except urllib.error.HTTPError as e:
         if e.code == 404:
             # Try alternative URL format (direct download)
-            url_alt = f"https://www.ncbi.nlm.nih.gov/geo/download/?acc={geo_accession}&format={file_type}&file={filename}"
+            url_alt = "https://www.ncbi.nlm.nih.gov/geo/download/?acc=%s&format=%s&file=%s" % (geo_accession, file_type, filename)
             try:
-                print(f"      Trying alternative URL...")
                 urllib.request.urlretrieve(url_alt, output_path)
                 file_size = output_path.stat().st_size
                 if file_size > 0:
-                    print(f"      OK Downloaded (alt URL): {file_size / 1024:.1f} KB")
                     return str(output_path)
             except Exception as e2:
-                pass
+                logger.error("Alternative URL download failed for %s: %s", filename, e2)
 
-            print(f"      X Not available (404)")
+            logger.error("File not available (404): %s", filename)
             return None
         else:
-            print(f"      X HTTP Error {e.code}: {e}")
+            logger.error("HTTP Error %s for %s: %s", e.code, filename, e)
             return None
     except Exception as e:
-        print(f"      X Download failed: {e}")
+        logger.error("Download failed for %s: %s", filename, e)
         return None
 
 
@@ -135,10 +136,14 @@ def parse_geo_series_matrix(matrix_file: str) -> Dict:
     try:
         with gzip.open(matrix_file, "rt", encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
-    except:
+    except Exception as e:
         # Try as plain text
-        with open(matrix_file, "rt", encoding="utf-8", errors="ignore") as f:
-            lines = f.readlines()
+        try:
+            with open(matrix_file, "rt", encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+        except Exception as e2:
+            logger.error("Error reading Series Matrix file %s: %s", matrix_file, e2)
+            raise
 
     # Find data section
     data_start = None
@@ -174,6 +179,7 @@ def parse_geo_series_matrix(matrix_file: str) -> Dict:
                 break
 
     if data_start is None:
+        logger.error("Could not find data section in Series Matrix file: %s", matrix_file)
         raise ValueError("Could not find data section")
 
     # Find header and data
@@ -185,6 +191,7 @@ def parse_geo_series_matrix(matrix_file: str) -> Dict:
             break
 
     if header_line is None:
+        logger.error("Could not find header line in Series Matrix file: %s", matrix_file)
         raise ValueError("Could not find header line")
 
     # Read data lines
@@ -196,6 +203,7 @@ def parse_geo_series_matrix(matrix_file: str) -> Dict:
             data_lines.append(line)
 
     if not data_lines:
+        logger.error("No data lines found in Series Matrix file: %s", matrix_file)
         raise ValueError("No data lines found")
 
     # Parse header
@@ -326,15 +334,17 @@ def parse_soft_file(soft_file: str) -> Dict:
 
     soft_file = Path(soft_file)
 
-    print(f"    Parsing SOFT file: {soft_file.name}")
-
     # Read SOFT file
     try:
         with gzip.open(soft_file, "rt", encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
-    except:
-        with open(soft_file, "rt", encoding="utf-8", errors="ignore") as f:
-            lines = f.readlines()
+    except Exception as e:
+        try:
+            with open(soft_file, "rt", encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+        except Exception as e2:
+            logger.error("Error reading SOFT file %s: %s", soft_file, e2)
+            raise
 
     # Parse SOFT format
     # SOFT files have sections: ^SERIES, ^SAMPLE, ^DATABASE
@@ -369,8 +379,6 @@ def parse_soft_file(soft_file: str) -> Dict:
                     series_metadata[key] = []
                 series_metadata[key].append(value)
 
-    print(f"      Found {len(samples)} samples in SOFT file")
-
     return {"samples": samples, "series_metadata": series_metadata}
 
 
@@ -393,15 +401,14 @@ def download_geo_dataset(geo_accession: str, output_dir: str) -> Dict:
     """
     output_dir = Path(output_dir)
 
-    print(f"  Downloading files for {geo_accession}...")
-
     # Download all file types
     matrix_file = download_geo_file(geo_accession, "matrix", str(output_dir))
     soft_file = download_geo_file(geo_accession, "soft", str(output_dir))
     miniml_file = download_geo_file(geo_accession, "miniml", str(output_dir))
 
     if not matrix_file:
-        raise ValueError(f"Failed to download Series Matrix for {geo_accession}")
+        logger.error("Failed to download Series Matrix for %s", geo_accession)
+        raise ValueError("Failed to download Series Matrix for %s" % geo_accession)
 
     # Parse Series Matrix (required for expression data)
     geo_data = parse_geo_series_matrix(matrix_file)
@@ -423,7 +430,7 @@ def download_geo_dataset(geo_accession: str, output_dir: str) -> Dict:
                 phenotypes = extract_phenotypes(geo_data)
                 geo_data["phenotypes"] = phenotypes
         except Exception as e:
-            print(f"    WARNING: Could not parse SOFT file: {e}")
+            logger.warning("Could not parse SOFT file for %s: %s", geo_accession, e)
             # Fall back to Series Matrix extraction
             phenotypes = extract_phenotypes(geo_data)
             geo_data["phenotypes"] = phenotypes
@@ -433,11 +440,15 @@ def download_geo_dataset(geo_accession: str, output_dir: str) -> Dict:
         geo_data["phenotypes"] = phenotypes
 
     # Save files
-    expression_file = output_dir / f"{geo_accession}_expression.csv"
-    phenotype_file = output_dir / f"{geo_accession}_phenotypes.csv"
+    try:
+        expression_file = output_dir / "%s_expression.csv" % geo_accession
+        phenotype_file = output_dir / "%s_phenotypes.csv" % geo_accession
 
-    geo_data["expression"].to_csv(expression_file)
-    phenotypes.to_csv(phenotype_file, index=False)
+        geo_data["expression"].to_csv(expression_file)
+        phenotypes.to_csv(phenotype_file, index=False)
+    except Exception as e:
+        logger.error("Error saving files for %s: %s", geo_accession, e)
+        raise
 
     return geo_data
 
@@ -529,37 +540,23 @@ def download_all_geo_datasets(
     geo_datasets = config.get("GEO_data_sets", [])
 
     if not geo_datasets:
+        logger.error("No GEO datasets found in config.yaml")
         raise ValueError("No GEO datasets found in config.yaml")
-
-    print(f"Found {len(geo_datasets)} GEO datasets to download:")
-    for gse in geo_datasets:
-        print(f"  - {gse}")
-    print()
 
     results = {}
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
     for i, geo_accession in enumerate(geo_datasets, 1):
-        print(f"[{i}/{len(geo_datasets)}] Processing {geo_accession}...")
         try:
             geo_data = download_geo_dataset(geo_accession, str(output_path))
             results[geo_accession] = geo_data
-
-            # Print summary
-            expr_shape = geo_data["expression"].shape
-            n_samples = len(geo_data["phenotypes"])
-            print(f"  OK Expression: {expr_shape[0]} genes × {expr_shape[1]} samples")
-            print(f"  OK Phenotypes: {n_samples} samples")
-            print(f"  OK Files saved to: {output_path}")
-            print()
 
             # Small delay to avoid overwhelming the server
             time.sleep(1)
 
         except Exception as e:
-            print(f"  X Error processing {geo_accession}: {e}")
-            print()
+            logger.error("Error processing %s: %s", geo_accession, e)
             results[geo_accession] = {"error": str(e)}
 
     return results
@@ -582,20 +579,18 @@ def main():
         successful = [gse for gse, data in results.items() if "error" not in data]
         failed = [gse for gse, data in results.items() if "error" in data]
 
-        print(f"Successfully downloaded: {len(successful)}/{len(results)}")
+        print("Successfully downloaded: %d/%d" % (len(successful), len(results)))
         if successful:
             for gse in successful:
                 data = results[gse]
                 expr_shape = data["expression"].shape
                 n_samples = len(data["phenotypes"])
-                print(
-                    f"  OK {gse}: {expr_shape[0]} genes × {expr_shape[1]} samples, {n_samples} phenotypes"
-                )
+                print("  OK %s: %d genes × %d samples, %d phenotypes" % (gse, expr_shape[0], expr_shape[1], n_samples))
 
         if failed:
-            print(f"\nFailed: {len(failed)}")
+            print("\nFailed: %d" % len(failed))
             for gse in failed:
-                print(f"  X {gse}: {results[gse].get('error', 'Unknown error')}")
+                print("  X %s: %s" % (gse, results[gse].get('error', 'Unknown error')))
 
         print()
         print("Files saved to: data/expression/")
@@ -605,10 +600,7 @@ def main():
         return 0 if not failed else 1
 
     except Exception as e:
-        print(f"\nX Error: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("Error in main: %s", e)
         return 1
 
 
