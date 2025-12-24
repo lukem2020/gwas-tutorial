@@ -1,174 +1,236 @@
-# GWAS Tutorial: Step-by-Step Pipeline
+# GWAS Tutorial: Gene Expression Analysis Pipeline
 
-A complete Python pipeline for GWAS, polygenic risk scoring (PRS), and eQTL analysis using **1000 Genomes Project** genotype data and **GEO** expression data.
+A complete Python pipeline for analyzing GEO gene expression data, performing differential expression analysis, and pathway enrichment.
 
-## Quick Start
+## Overview
 
-### Prerequisites
+This pipeline:
+1. Downloads GEO datasets (gene expression + phenotypes)
+2. Processes expression data (probe-to-gene mapping, aggregation)
+3. Cleans data (extracts phenotypes, creates binary disease status)
+4. Performs differential expression analysis
+5. Visualizes results (volcano plots, heatmaps)
+6. Prepares data for pathway enrichment
+
+## Prerequisites
 
 - Python 3.8 or higher
 - pip package manager
+- Git (optional, for cloning)
 
-### Installation
+## Quick Start
 
-1. Clone or download this repository
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-### Running the Pipeline
-
-#### Step 1: Download GEO Diabetes Dataset
-
-Download a GEO dataset for diabetes which contains both expression and phenotype data:
+### Step 1: Create Virtual Environment
 
 ```bash
-python step1_download_geo_diabetes.py
+# Create virtual environment
+python -m venv .venv
+
+# Activate virtual environment
+# On Windows:
+.venv\Scripts\activate
+
+# On macOS/Linux:
+source .venv/bin/activate
+```
+
+### Step 2: Install Requirements
+
+```bash
+pip install -r requirements.txt
+```
+
+### Step 3: Run Data Processing Pipeline
+
+The main pipeline downloads, processes, and cleans the GEO datasets:
+
+```bash
+python main.py
 ```
 
 This will:
-- Prompt you for a GEO accession number (e.g., GSE12345)
-- Download the GEO Series Matrix file
-- Extract expression data
-- Extract phenotype data (diabetes status, clinical variables)
-- Save both to `data/expression/`
+- Download GEO datasets listed in `config.yaml`
+- Extract probe-to-gene mappings
+- Aggregate expression to gene level
+- Clean phenotype data
+- Save processed files to `data/expression/`
 
-**To find a diabetes GEO dataset:**
-1. Go to https://www.ncbi.nlm.nih.gov/geo/
-2. Search for "diabetes" or "type 2 diabetes"
-3. Find a dataset with both expression and phenotype data
-4. Copy the GEO accession (e.g., GSE12345)
+**Expected output files:**
+- `{GSE}_expression.csv` - Raw expression data
+- `{GSE}_phenotypes.csv` - Phenotype data
+- `{GSE}_probe_to_gene.csv` - Probe-to-gene mapping
+- `{GSE}_gene_expression.csv` - Gene-level expression matrix
+- `{GSE}_gene_expression_with_phenotypes.csv` - Combined dataset
+- `{GSE}_cleaned.csv` - Cleaned dataset with extracted phenotypes
 
-#### Step 2: Configure Project
+### Step 4: Run Analysis Notebook
 
-Set up your project configuration:
-
-```bash
-python step2_configure.py
-```
-
-This will:
-- Load and validate `config.yaml`
-- Create necessary directory structure
-- Display configuration summary
-
-The `config.yaml` file contains all settings for:
-- Data directories
-- 1000 Genomes download settings
-- GEO expression data settings
-- Quality control thresholds
-- GWAS parameters
-- PRS and eQTL settings
-
-#### Step 3: Download Genotype Data
-
-Download 1000 Genomes VCF files for specified chromosomes:
+Open and run the analysis notebook:
 
 ```bash
-python step3_download_genotypes.py
+# If using Jupyter Lab:
+jupyter lab notebooks/analysis.ipynb
+
+# If using Jupyter Notebook:
+jupyter notebook notebooks/analysis.ipynb
+
+# If using VS Code:
+# Just open notebooks/analysis.ipynb in VS Code
 ```
 
-This will:
-- Download VCF files from 1000 Genomes FTP server
-- Show progress for each chromosome
-- Verify downloaded files
-- Skip already downloaded files (unless forced)
+**In the notebook, run cells sequentially:**
 
-**Note**: Downloads can be large (100s of MB to several GB per chromosome). 
-The script downloads chromosomes specified in `config.yaml` (default: 2, 3, 4, 6, 8, 9, 10, 11).
+1. **Cell 1**: Load data (loads cleaned dataset)
+2. **Cell 2**: Pipeline overview (markdown)
+3. **Cell 3**: Data preparation and QC
+4. **Cell 4**: Differential expression analysis
+5. **Cell 5**: Volcano plot visualization
+6. **Cell 6**: Heatmap visualization
+7. **Cell 7**: Pathway enrichment preparation
+8. **Cell 8**: Results export
 
-#### Step 4: Prepare Phenotype Data
-
-Uses the phenotype data downloaded from GEO in Step 1:
-
-```bash
-python step4_prepare_phenotypes.py
-```
-
-This will:
-- Load the phenotype file from Step 1 (GEO dataset)
-- Validate sample IDs
-- Prepare the phenotype data for GWAS analysis
-
-**Note**: The phenotype file from Step 1 should already be in `data/expression/` with the format `{GEO_ACCESSION}_phenotypes.csv`
-
-The phenotype file must have:
-- `sample_id`: 1000 Genomes sample IDs (e.g., HG00096, NA12878)
-- `phenotype`: Your trait values (case/control: 1/0, or continuous values)
-- `age`: Age in years (optional but recommended)
-- `sex`: 0=female, 1=male (optional but recommended)
+**Results will be saved to:**
+- `results/differential_expression_results.csv` - Full results
+- `results/significant_genes_results.csv` - Significant genes only
+- `results/significant_genes.txt` - Gene list for enrichment tools
+- `results/ranked_genes_for_gsea.txt` - Ranked list for GSEA
+- `results/analysis_summary.csv` - Summary statistics
 
 ## Project Structure
 
 ```
 gwas-tutorial/
-├── config.yaml              # Project configuration
-├── step1_configure.py       # Step 1: Configure project
-├── src/                     # Python modules
-│   ├── __init__.py
-│   └── config.py           # Configuration management
-├── notebooks/              # Jupyter notebooks
-│   └── visualization.ipynb
-├── data/                   # Data directory (created automatically)
-│   ├── genotypes/         # 1000 Genomes VCF files
-│   ├── phenotypes/        # Phenotype CSV files
-│   └── expression/         # GEO expression data
-├── results/                # Analysis results (created automatically)
-│   └── plots/             # Generated plots
-└── requirements.txt        # Python dependencies
+├── main.py                 # Main pipeline entry point
+├── config.yaml             # Configuration (GEO datasets to process)
+├── requirements.txt        # Python dependencies
+├── README.md              # This file
+├── src/                   # Source code modules
+│   ├── download_geo_data.py    # Download GEO datasets
+│   ├── aggregate_files.py      # Process expression data
+│   └── clean_data.py           # Clean phenotype data
+├── notebooks/             # Jupyter notebooks
+│   └── analysis.ipynb     # Differential expression analysis
+├── data/                  # Data directory (created automatically)
+│   └── expression/        # Processed expression data
+└── results/               # Analysis results (created by notebook)
+```
+
+## Configuration
+
+Edit `config.yaml` to specify which GEO datasets to process:
+
+```yaml
+GEO_data_sets:
+  - GSE28042
+  - GSE38958
+  - GSE33566
+  - GSE93606
 ```
 
 ## Pipeline Steps
 
-### Pre-Analysis: Data Preparation & Quality Control
+### 1. Download (`src/download_geo_data.py`)
+- Downloads Series Matrix, SOFT, and MINiML files from GEO
+- Extracts expression and phenotype data
+- Saves to `data/expression/`
 
-1. ✅ **Configure project** - Set up configuration and directories
-2. Download genotype data (1000 Genomes)
-3. Prepare phenotype data
-4. Download expression data (GEO)
-5. Load genotypes
-6. Load phenotype
-7. Quality Control (QC)
-8. Calculate PCA
+### 2. Process (`src/aggregate_files.py`)
+- Parses SOFT files for probe-to-gene mappings
+- Aggregates probe-level to gene-level expression
+- Merges expression with phenotypes
+- Saves gene-level datasets
 
-### Post-Analysis: Association Testing & Interpretation
+### 3. Clean (`src/clean_data.py`)
+- Extracts phenotype variables from structured text
+- Creates binary disease_status column (0/1)
+- Removes original Characteristics Ch1 column
+- Saves cleaned datasets
 
-9. Run GWAS
-10. Calculate PRS
-11. Run eQTL analysis
-12. Visualize results
-13. Save results
-14. Review & interpret
+### 4. Analyze (`notebooks/analysis.ipynb`)
+- Differential expression analysis (disease vs control)
+- Statistical testing with FDR correction
+- Visualization (volcano plots, heatmaps)
+- Pathway enrichment preparation
 
-## Configuration
+## Output Files
 
-Edit `config.yaml` to customize:
-- Chromosomes to analyze
-- QC thresholds
-- GWAS model parameters
-- Output settings
+### From `main.py`:
+- `data/expression/{GSE}_expression.csv` - Raw expression
+- `data/expression/{GSE}_phenotypes.csv` - Phenotypes
+- `data/expression/{GSE}_probe_to_gene.csv` - Probe mapping
+- `data/expression/{GSE}_gene_expression.csv` - Gene expression
+- `data/expression/{GSE}_gene_expression_with_phenotypes.csv` - Combined
+- `data/expression/{GSE}_cleaned.csv` - Cleaned data
 
-See `guide.md` for detailed best practices and guidelines.
+### From `analysis.ipynb`:
+- `results/differential_expression_results.csv` - All genes
+- `results/significant_genes_results.csv` - Significant only
+- `results/significant_genes.txt` - For Enrichr/DAVID
+- `results/ranked_genes_for_gsea.txt` - For GSEA
+- `results/analysis_summary.csv` - Summary stats
 
-## Data Sources
+## Troubleshooting
 
-- **Genotype Data**: [1000 Genomes Project](https://www.internationalgenome.org/)
-- **Expression Data**: [GEO (Gene Expression Omnibus)](https://www.ncbi.nlm.nih.gov/geo/)
+### Virtual Environment Issues
 
-## Skills Documentation
+**Windows:**
+```bash
+# If activation doesn't work:
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
 
-For employers and collaborators, see:
-- **`SKILLS_SUMMARY.md`** - Quick reference of core competencies
-- **`SKILLS_DOCUMENTATION.md`** - Detailed technical documentation of skills and achievements
+**macOS/Linux:**
+```bash
+# If activation doesn't work:
+source .venv/bin/activate
+```
 
-These documents demonstrate expertise in:
-- Statistical models for genomic/biological research
-- Innovation in statistical methodology
-- Advanced Python coding skills
-- Deep expertise in GWAS, PRS, eQTL, pathway analysis, Mendelian randomization
+### Import Errors
 
-## License
+If you get import errors, make sure:
+1. Virtual environment is activated
+2. All requirements are installed: `pip install -r requirements.txt`
+3. You're running from the project root directory
 
-This tutorial is for educational purposes.
+### Data Loading Issues
+
+If notebooks can't find data:
+1. Make sure `main.py` has completed successfully
+2. Check that files exist in `data/expression/`
+3. Verify the dataset name matches what's in the notebook
+
+### Memory Issues
+
+For large datasets:
+- Process one dataset at a time
+- Close other applications
+- Consider using a machine with more RAM
+
+## Next Steps After Analysis
+
+1. **Pathway Enrichment**: Use saved gene lists with:
+   - [Enrichr](https://maayanlab.cloud/Enrichr/)
+   - [DAVID](https://david.ncifcrf.gov/)
+   - [GSEA](https://www.gsea-msigdb.org/gsea/index.jsp)
+
+2. **Literature Review**: Investigate top differentially expressed genes
+
+3. **Integration**: Combine with published GWAS/eQTL results
+
+4. **Validation**: Test findings in independent datasets
+
+## Dependencies
+
+See `requirements.txt` for full list. Key packages:
+- `pandas` - Data manipulation
+- `numpy` - Numerical computing
+- `scipy` - Statistical functions
+- `statsmodels` - Multiple testing correction
+- `matplotlib` / `seaborn` - Visualization
+- `scikit-learn` - Machine learning utilities
+- `PyYAML` - Configuration file parsing
+
+4. Verify data files are present
+
+
 

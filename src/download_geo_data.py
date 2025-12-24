@@ -441,13 +441,13 @@ def download_geo_dataset(geo_accession: str, output_dir: str) -> Dict:
 
     # Save files
     try:
-        expression_file = output_dir / "%s_expression.csv" % geo_accession
-        phenotype_file = output_dir / "%s_phenotypes.csv" % geo_accession
+        expression_file = output_dir / ("%s_expression.csv" % geo_accession)
+        phenotype_file = output_dir / ("%s_phenotypes.csv" % geo_accession)
 
-        geo_data["expression"].to_csv(expression_file)
-        phenotypes.to_csv(phenotype_file, index=False)
+        geo_data["expression"].to_csv(str(expression_file))
+        phenotypes.to_csv(str(phenotype_file), index=False)
     except Exception as e:
-        logger.error("Error saving files for %s: %s", geo_accession, e)
+        logger.error("Error saving files for %s: %s", geo_accession, str(e))
         raise
 
     return geo_data

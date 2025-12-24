@@ -1,0 +1,2 @@
+analysis_date,dataset,total_samples,disease_samples,control_samples,total_genes_tested,significant_genes_fdr_05,significant_genes_fdr_01,upregulated_genes,downregulated_genes,mean_fold_change,median_fold_change
+2025-12-24 14:09:22,GSE28042,94,75,19,18618,4997,3077,2401,2596,-0.022304429045796274,-0.0036480127687719133

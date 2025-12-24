@@ -46,7 +46,7 @@ def parse_soft_platform_table(soft_file: str) -> pd.DataFrame:
     # Check if file exists
     if not soft_file.exists():
         logger.error("SOFT file not found: %s", soft_file)
-        raise FileNotFoundError("SOFT file not found: %s" % soft_file)
+        raise FileNotFoundError("SOFT file not found: %s" % str(soft_file))
 
     # Read file (handle both compressed and uncompressed)
     try:
@@ -409,9 +409,9 @@ def process_geo_dataset(
     data_dir = Path(data_dir)
 
     # File paths
-    soft_file = data_dir / "%s_family.soft.gz" % geo_accession
-    expression_file = data_dir / "%s_expression.csv" % geo_accession
-    phenotype_file = data_dir / "%s_phenotypes.csv" % geo_accession
+    soft_file = data_dir / ("%s_family.soft.gz" % geo_accession)
+    expression_file = data_dir / ("%s_expression.csv" % geo_accession)
+    phenotype_file = data_dir / ("%s_phenotypes.csv" % geo_accession)
 
     # Check files exist
     missing_files = []
@@ -502,29 +502,29 @@ def save_processed_data(
 
     # Save probe-to-gene mapping
     try:
-        probe_to_gene_file = output_dir / "%s_probe_to_gene.csv" % geo_accession
-        results["probe_to_gene"].to_csv(probe_to_gene_file, index=False)
+        probe_to_gene_file = output_dir / ("%s_probe_to_gene.csv" % geo_accession)
+        results["probe_to_gene"].to_csv(str(probe_to_gene_file), index=False)
         saved_files["probe_to_gene"] = probe_to_gene_file
     except Exception as e:
-        logger.error("Error saving probe-to-gene mapping for %s: %s", geo_accession, e)
+        logger.error("Error saving probe-to-gene mapping for %s: %s", geo_accession, str(e))
         raise
 
     # Save gene-level expression matrix
     try:
-        gene_expr_file = output_dir / "%s_gene_expression.csv" % geo_accession
-        results["gene_expression"].to_csv(gene_expr_file)
+        gene_expr_file = output_dir / ("%s_gene_expression.csv" % geo_accession)
+        results["gene_expression"].to_csv(str(gene_expr_file))
         saved_files["gene_expression"] = gene_expr_file
     except Exception as e:
-        logger.error("Error saving gene expression for %s: %s", geo_accession, e)
+        logger.error("Error saving gene expression for %s: %s", geo_accession, str(e))
         raise
 
     # Save combined expression + phenotypes
     try:
-        combined_file = output_dir / "%s_gene_expression_with_phenotypes.csv" % geo_accession
-        results["combined"].to_csv(combined_file, index=False)
+        combined_file = output_dir / ("%s_gene_expression_with_phenotypes.csv" % geo_accession)
+        results["combined"].to_csv(str(combined_file), index=False)
         saved_files["combined"] = combined_file
     except Exception as e:
-        logger.error("Error saving combined data for %s: %s", geo_accession, e)
+        logger.error("Error saving combined data for %s: %s", geo_accession, str(e))
         raise
 
     return saved_files

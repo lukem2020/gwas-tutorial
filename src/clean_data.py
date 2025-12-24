@@ -196,11 +196,11 @@ def clean_geo_dataset(geo_accession: str, data_dir: str = "data/expression") -> 
     data_dir = Path(data_dir)
 
     # File path
-    combined_file = data_dir / "%s_gene_expression_with_phenotypes.csv" % geo_accession
+    combined_file = data_dir / ("%s_gene_expression_with_phenotypes.csv" % geo_accession)
 
     if not combined_file.exists():
         logger.error("File not found: %s", combined_file)
-        raise FileNotFoundError("File not found: %s" % combined_file)
+        raise FileNotFoundError("File not found: %s" % str(combined_file))
 
     # Load combined dataset
     try:
@@ -291,10 +291,10 @@ def save_cleaned_data(
 
     # Save cleaned dataset
     try:
-        output_file = output_dir / "%s_cleaned.csv" % geo_accession
-        results["cleaned"].to_csv(output_file, index=False)
+        output_file = output_dir / ("%s_cleaned.csv" % geo_accession)
+        results["cleaned"].to_csv(str(output_file), index=False)
     except Exception as e:
-        logger.error("Error saving cleaned data for %s: %s", geo_accession, e)
+        logger.error("Error saving cleaned data for %s: %s", geo_accession, str(e))
         raise
 
     return output_file
