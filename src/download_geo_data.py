@@ -56,7 +56,7 @@ def download_geo_file(geo_accession: str, file_type: str, output_dir: str) -> Op
     if output_path.exists():
         file_size = output_path.stat().st_size
         if file_size > 0:
-            print(f"    ✓ Already downloaded: {filename} ({file_size / 1024:.1f} KB)")
+            print(f"    OK Already downloaded: {filename} ({file_size / 1024:.1f} KB)")
             return str(output_path)
     
     print(f"    Downloading {file_type.upper()}: {filename}")
@@ -64,7 +64,7 @@ def download_geo_file(geo_accession: str, file_type: str, output_dir: str) -> Op
     try:
         urllib.request.urlretrieve(url, output_path)
         file_size = output_path.stat().st_size
-        print(f"      ✓ Downloaded: {file_size / 1024:.1f} KB")
+        print(f"      OK Downloaded: {file_size / 1024:.1f} KB")
         return str(output_path)
     except urllib.error.HTTPError as e:
         if e.code == 404:
@@ -75,18 +75,18 @@ def download_geo_file(geo_accession: str, file_type: str, output_dir: str) -> Op
                 urllib.request.urlretrieve(url_alt, output_path)
                 file_size = output_path.stat().st_size
                 if file_size > 0:
-                    print(f"      ✓ Downloaded (alt URL): {file_size / 1024:.1f} KB")
+                    print(f"      OK Downloaded (alt URL): {file_size / 1024:.1f} KB")
                     return str(output_path)
             except Exception as e2:
                 pass
             
-            print(f"      ✗ Not available (404)")
+            print(f"      X Not available (404)")
             return None
         else:
-            print(f"      ✗ HTTP Error {e.code}: {e}")
+            print(f"      X HTTP Error {e.code}: {e}")
             return None
     except Exception as e:
-        print(f"      ✗ Download failed: {e}")
+        print(f"      X Download failed: {e}")
         return None
 
 
@@ -405,7 +405,7 @@ def download_geo_dataset(geo_accession: str, output_dir: str) -> Dict:
                 phenotypes = extract_phenotypes(geo_data)
                 geo_data['phenotypes'] = phenotypes
         except Exception as e:
-            print(f"    ⚠ Could not parse SOFT file: {e}")
+            print(f"    WARNING: Could not parse SOFT file: {e}")
             # Fall back to Series Matrix extraction
             phenotypes = extract_phenotypes(geo_data)
             geo_data['phenotypes'] = phenotypes
@@ -527,26 +527,33 @@ def download_all_geo_datasets(config_path: str = "config.yaml", output_dir: str 
             # Print summary
             expr_shape = geo_data['expression'].shape
             n_samples = len(geo_data['phenotypes'])
-            print(f"  ✓ Expression: {expr_shape[0]} genes × {expr_shape[1]} samples")
-            print(f"  ✓ Phenotypes: {n_samples} samples")
-            print(f"  ✓ Files saved to: {output_path}")
+            print(f"  OK Expression: {expr_shape[0]} genes × {expr_shape[1]} samples")
+            print(f"  OK Phenotypes: {n_samples} samples")
+            print(f"  OK Files saved to: {output_path}")
             print()
             
             # Small delay to avoid overwhelming the server
             time.sleep(1)
             
         except Exception as e:
-            print(f"  ✗ Error processing {geo_accession}: {e}")
+            print(f"  X Error processing {geo_accession}: {e}")
             print()
             results[geo_accession] = {'error': str(e)}
     
     return results
 
 
-if __name__ == "__main__":
+def main():
+    """Main function to download all GEO datasets from config."""
+    print("=" * 60)
+    print("Download GEO Datasets")
+    print("=" * 60)
+    print()
+    
     try:
         results = download_all_geo_datasets()
         
+        print()
         print("=" * 60)
         print("Download Summary")
         print("=" * 60)
@@ -555,13 +562,32 @@ if __name__ == "__main__":
         
         print(f"Successfully downloaded: {len(successful)}/{len(results)}")
         if successful:
-            print(f"  {', '.join(successful)}")
+            for gse in successful:
+                data = results[gse]
+                expr_shape = data['expression'].shape
+                n_samples = len(data['phenotypes'])
+                print(f"  OK {gse}: {expr_shape[0]} genes × {expr_shape[1]} samples, {n_samples} phenotypes")
+        
         if failed:
-            print(f"Failed: {len(failed)}")
-            print(f"  {', '.join(failed)}")
-            
+            print(f"\nFailed: {len(failed)}")
+            for gse in failed:
+                print(f"  X {gse}: {results[gse].get('error', 'Unknown error')}")
+        
+        print()
+        print("Files saved to: data/expression/")
+        print("  - {GSE}_expression.csv (expression data)")
+        print("  - {GSE}_phenotypes.csv (phenotype data)")
+        
+        return 0 if not failed else 1
+        
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"\nX Error: {e}")
         import traceback
         traceback.print_exc()
+        return 1
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())
 
